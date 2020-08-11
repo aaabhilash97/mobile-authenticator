@@ -2,130 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:flutter/services.dart';
 import 'package:uni_links/uni_links.dart';
-// import 'package:barcode_scan/barcode_scan.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:logger/logger.dart';
 
-class OtpAccount {
-  int index;
-  final String accountName;
-  final String secret;
-  final String otpType;
+import 'app/pages/add_account.dart';
+import 'app/services/cache/accounts.dart';
 
-  OtpAccount(this.index, this.accountName, this.secret, this.otpType);
-
-  OtpAccount.fromJson(Map<String, dynamic> json)
-      : index = json['index'],
-        accountName = json['account_name'],
-        secret = json['secret'],
-        otpType = json['otp_type'];
-
-  Map<String, dynamic> toJson() => {
-        'index': index,
-        'account_name': accountName,
-        'secret': secret,
-        'otp_type': otpType,
-      };
-}
-
-class AddAccountManually extends StatefulWidget {
-  @override
-  AddAccountManuallyState createState() {
-    return AddAccountManuallyState();
-  }
-}
-
-Future<List<OtpAccount>> accountList() async {
-  List<OtpAccount> accounts = [];
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  var savedAccounts = prefs.getString("accounts");
-  if (savedAccounts == null || savedAccounts.isEmpty) {
-    return accounts;
-  } else {
-    print(savedAccounts);
-    var accountsMap = jsonDecode(savedAccounts) as List;
-    accountsMap.forEach((e) {
-      accounts.add(OtpAccount.fromJson(e));
-    });
-    return accounts;
-  }
-}
-
-addAccount(OtpAccount item) async {
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  var accounts = await accountList();
-  item.index = accounts.length;
-  accounts.add(item);
-  await prefs.setString("accounts", jsonEncode(accounts));
-}
-
-class AddAccountManuallyState extends State<AddAccountManually> {
-  // Create a global key that uniquely identifies the Form widget
-  // and allows validation of the form.
-  //
-  // Note: This is a `GlobalKey<FormState>`,
-  // not a GlobalKey<AddAccountManuallyState>.
-  final _formKey = GlobalKey<FormState>();
-  var _accountName = "";
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Add account details"),
-      ),
-      body: Container(
-        padding: EdgeInsets.all(10),
-        child: Form(
-            key: _formKey,
-            child: Column(children: <Widget>[
-              Container(
-                padding: EdgeInsets.all(10),
-                child: TextFormField(
-                  onChanged: (value) {
-                    setState(() {
-                      _accountName = value;
-                    });
-                  },
-                  decoration: InputDecoration(
-                      border: OutlineInputBorder(), labelText: 'Account name'),
-                  // The validator receives the text that the user has entered.
-                  validator: (value) {
-                    if (value.isEmpty) {
-                      return 'Too short';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              RaisedButton(
-                onPressed: () async {
-                  // Validate returns true if the form is valid, otherwise false.
-                  if (_formKey.currentState.validate()) {
-                    // If the form is valid, display a snackbar. In the real world,
-                    // you'd often call a server or save the information in a database.
-                    await addAccount(
-                        OtpAccount(0, _accountName, "000000", "totp"));
-                    final snackBar = SnackBar(
-                      content: Text('Added'),
-                      duration: Duration(milliseconds: 300),
-                    );
-                    Scaffold.of(context).showSnackBar(snackBar);
-                    Navigator.pop(context, true);
-                  }
-                },
-                child: Text('Add'),
-              ),
-            ])),
-      ),
-    );
-  }
-}
+var logger = Logger();
 
 class HomePage extends StatefulWidget {
   @override
@@ -163,10 +49,6 @@ class _HomePageState extends State<HomePage> {
         var popItem = part2.removeAt(part2.length - 1);
         part2.insert(0, popItem);
       }
-
-      print(part1);
-      print(part2);
-      print(part3);
       List<OtpAccount> newItems = [];
       newItems.addAll(part1);
       newItems.addAll(part2);
@@ -184,7 +66,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    print("Loading Home page>>>>>>>>>>>>>>>>>>>>>>");
+    var fn = "_HomePageState.build";
+    logger.d(fn, "Loading home page");
     return Scaffold(
       appBar: AppBar(
           title: Container(
@@ -264,7 +147,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void loadItems() async {
-    var ok = await accountList();
+    var ok = await OtpAccount.accountList();
     setState(() {
       items = ok;
       initLoading = true;
@@ -272,8 +155,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildAccountList() {
-    print("Loading Home page._buildAccountList>>>>>>>>>>>>>>>>>>>>>>");
-    print(initLoading);
     if (!initLoading) {
       loadItems();
       return Center(
@@ -345,16 +226,13 @@ void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
   initPlatformState() async {
+    var fn = "MyApp.initPlatformState";
     try {
       String initialLink = await getInitialLink();
-      print(">>>>>>>>>>>>>>>>>>>> init");
-      print(initialLink);
+      logger.d(fn, initialLink);
       SystemChannels.lifecycle.setMessageHandler((msg) async {
-        print("<<<<<<<<<<<<<<<<<<<<<<<");
-        debugPrint('SystemChannels> $msg');
         String initialLink = await getInitialLink();
-        print(">>>>>>>>>>>>>>>>>>>> resume");
-        print(initialLink);
+        logger.d(fn, initialLink);
       });
       // Use the uri and warn the user, if it is not correct,
       // but keep in mind it could be `null`.
@@ -369,7 +247,7 @@ class MyApp extends StatelessWidget {
     initPlatformState();
     var darkTheme = ThemeData.dark().copyWith(
         accentColor: Colors.blue,
-        splashColor: Colors.blue,
+        // splashColor: Colors.blue,
         textSelectionColor: Colors.blue,
         textTheme: Theme.of(context).textTheme.apply(
               bodyColor: Colors.white,
