@@ -19,6 +19,8 @@ class AddAccountManuallyState extends State<AddAccountManually> {
   // not a GlobalKey<AddAccountManuallyState>.
   final _formKey = GlobalKey<FormState>();
   var _accountName = "";
+  var _secret = "";
+  var currentOtpType = "time";
 
   @override
   Widget build(BuildContext context) {
@@ -50,23 +52,82 @@ class AddAccountManuallyState extends State<AddAccountManually> {
                   },
                 ),
               ),
-              RaisedButton(
-                onPressed: () async {
-                  // Validate returns true if the form is valid, otherwise false.
-                  if (_formKey.currentState.validate()) {
-                    // If the form is valid, display a snackbar. In the real world,
-                    // you'd often call a server or save the information in a database.
-                    await OtpAccount.addAccount(
-                        OtpAccount(0, _accountName, "000000", "totp"));
-                    final snackBar = SnackBar(
-                      content: Text('Added'),
-                      duration: Duration(milliseconds: 300),
-                    );
-                    Scaffold.of(context).showSnackBar(snackBar);
-                    Navigator.pop(context, true);
-                  }
-                },
-                child: Text('Add'),
+              Container(
+                padding: EdgeInsets.all(10),
+                child: TextFormField(
+                  onChanged: (value) {
+                    setState(() {
+                      _secret = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                      border: OutlineInputBorder(), labelText: 'Secret'),
+                  // The validator receives the text that the user has entered.
+                  validator: (value) {
+                    if (value.isEmpty || value.length < 16) {
+                      return 'Too short';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              Container(
+                // padding: EdgeInsets.all(10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                        child: Container(
+                            padding: EdgeInsets.all(10),
+                            child: new DropdownButtonFormField(
+                              decoration: InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  labelText: 'Type of key',
+                                  hintText: 'Type of key'),
+                              value: currentOtpType,
+                              icon: Icon(Icons.arrow_downward),
+                              items: [
+                                {'value': 'time', 'label': "Time based"},
+                                // {'value': 'counter', 'label': "Counter based"},
+                              ].map((value) {
+                                return new DropdownMenuItem(
+                                  value: value["value"],
+                                  child: new Text(value["label"]),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                currentOtpType = value;
+                              },
+                            ))),
+                    Expanded(
+                        child: Container(
+                            padding: EdgeInsets.all(10),
+                            child: RaisedButton(
+                              onPressed: () async {
+                                // Validate returns true if the form is valid, otherwise false.
+                                if (_formKey.currentState.validate()) {
+                                  // If the form is valid, display a snackbar. In the real world,
+                                  // you'd often call a server or save the information in a database.
+                                  logger.d(
+                                      _accountName + _secret + currentOtpType);
+                                  await OtpAccount.addAccount(OtpAccount(
+                                      0,
+                                      _accountName,
+                                      _secret,
+                                      currentOtpType,
+                                      ""));
+                                  final snackBar = SnackBar(
+                                    content: Text('Added'),
+                                    duration: Duration(milliseconds: 300),
+                                  );
+                                  Scaffold.of(context).showSnackBar(snackBar);
+                                  Navigator.pop(context, true);
+                                }
+                              },
+                              child: Text('Add'),
+                            ))),
+                  ],
+                ),
               ),
             ])),
       ),

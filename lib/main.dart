@@ -5,11 +5,13 @@
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:flutter/services.dart';
-import 'package:uni_links/uni_links.dart';
 import 'package:logger/logger.dart';
-
+import 'dart:async';
 import 'app/pages/add_account.dart';
 import 'app/services/cache/accounts.dart';
+
+import 'init_link.dart';
+import 'package:provider/provider.dart';
 
 var logger = Logger();
 
@@ -18,10 +20,8 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-enum UniLinksType { string, uri }
-
 class _HomePageState extends State<HomePage> {
-  bool initLoading = false;
+  bool refreshPage = true;
 
   List<OtpAccount> items = [];
 
@@ -60,7 +60,51 @@ class _HomePageState extends State<HomePage> {
 
   void refresh() {
     setState(() {
-      initLoading = false;
+      refreshPage = true;
+    });
+  }
+
+  Future<void> _showInitAccountAddDialog(OtpAccount item) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Save key for'),
+          content: Text('${item.accountName}'),
+          actions: <Widget>[
+            FlatButton(
+              child: Text('Save'),
+              onPressed: () async {
+                await OtpAccount.addAccount(item);
+                refresh();
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      DeepLinkInitLink _bloc = DeepLinkInitLink();
+      _bloc.state.listen((event) async {
+        var parsedUri = Uri.parse(event);
+        if (parsedUri.scheme == "otpauth") {
+          var otpType = parsedUri.host;
+          if (otpType == "totp") {
+            var accName = parsedUri.path.replaceFirst("/", "");
+            var secret = parsedUri.queryParameters["secret"];
+            var issuer = parsedUri.queryParameters["issuer"];
+            await _showInitAccountAddDialog(
+                OtpAccount(0, accName, secret, otpType, issuer));
+          }
+        }
+      });
     });
   }
 
@@ -70,19 +114,19 @@ class _HomePageState extends State<HomePage> {
     logger.d(fn, "Loading home page");
     return Scaffold(
       appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.transparent,
           title: Container(
               child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          Text(
-            "Authenticator",
-            style: TextStyle(
-              fontSize: 25,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ))),
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                "Authenticator",
+                style: TextStyle(fontSize: 25, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ))),
       body: _buildAccountList(),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Theme.of(context).buttonColor,
@@ -124,7 +168,15 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _moreAccountActionBottomSheet(context, item) {
+  void deleteItem(OtpAccount item) async {
+    await OtpAccount.deleteAccount(item);
+    setState(() {
+      refreshPage = true;
+    });
+    Navigator.pop(context);
+  }
+
+  void _moreAccountActionBottomSheet(context, OtpAccount item) {
     showModalBottomSheet(
         context: context,
         builder: (BuildContext bc) {
@@ -134,11 +186,11 @@ class _HomePageState extends State<HomePage> {
                 new ListTile(
                     leading: new Icon(Icons.content_copy),
                     title: new Text('Copy'),
-                    onTap: () => {copToClipBoard(item[2], true)}),
+                    onTap: () => {copToClipBoard(item.token, true)}),
                 new ListTile(
                   leading: new Icon(Icons.delete),
                   title: new Text('Delete'),
-                  onTap: () => {},
+                  onTap: () => {deleteItem(item)},
                 ),
               ],
             ),
@@ -150,12 +202,12 @@ class _HomePageState extends State<HomePage> {
     var ok = await OtpAccount.accountList();
     setState(() {
       items = ok;
-      initLoading = true;
+      refreshPage = false;
     });
   }
 
   Widget _buildAccountList() {
-    if (!initLoading) {
+    if (refreshPage) {
       loadItems();
       return Center(
         child: CircularProgressIndicator(),
@@ -225,26 +277,9 @@ class _HomePageState extends State<HomePage> {
 void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
-  initPlatformState() async {
-    var fn = "MyApp.initPlatformState";
-    try {
-      String initialLink = await getInitialLink();
-      logger.d(fn, initialLink);
-      SystemChannels.lifecycle.setMessageHandler((msg) async {
-        String initialLink = await getInitialLink();
-        logger.d(fn, initialLink);
-      });
-      // Use the uri and warn the user, if it is not correct,
-      // but keep in mind it could be `null`.
-    } on FormatException {
-      // Handle exception by warning the user their action did not succeed
-      // return?
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    initPlatformState();
+    DeepLinkInitLink _bloc = DeepLinkInitLink();
     var darkTheme = ThemeData.dark().copyWith(
         accentColor: Colors.blue,
         // splashColor: Colors.blue,
@@ -263,9 +298,10 @@ class MyApp extends StatelessWidget {
       ),
       darkTheme: darkTheme,
       home: Scaffold(
-        body: Center(
-          child: HomePage(),
-        ),
+        body: Provider<DeepLinkInitLink>(
+            create: (context) => _bloc,
+            dispose: (context, bloc) => bloc.dispose(),
+            child: HomePage()),
       ),
     );
   }
