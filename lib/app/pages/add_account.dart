@@ -26,7 +26,17 @@ class AddAccountManuallyState extends State<AddAccountManually> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Add account details"),
+        iconTheme: IconThemeData(
+          color: Theme.of(context).appBarTheme.color,
+        ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        title: Text(
+          "Add account details",
+          style: TextStyle(
+            color: Theme.of(context).appBarTheme.color,
+          ),
+        ),
       ),
       body: Container(
         padding: EdgeInsets.all(10),
@@ -77,6 +87,7 @@ class AddAccountManuallyState extends State<AddAccountManually> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Expanded(
+                        flex: 70,
                         child: Container(
                             padding: EdgeInsets.all(10),
                             child: new DropdownButtonFormField(
@@ -100,6 +111,7 @@ class AddAccountManuallyState extends State<AddAccountManually> {
                               },
                             ))),
                     Expanded(
+                        flex: 30,
                         child: Container(
                             padding: EdgeInsets.all(10),
                             child: RaisedButton(

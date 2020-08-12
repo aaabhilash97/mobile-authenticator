@@ -122,7 +122,8 @@ class _HomePageState extends State<HomePage> {
             children: <Widget>[
               Text(
                 "Authenticator",
-                style: TextStyle(fontSize: 25, color: Colors.grey),
+                style: TextStyle(
+                    fontSize: 25, color: Theme.of(context).appBarTheme.color),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -281,6 +282,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     DeepLinkInitLink _bloc = DeepLinkInitLink();
     var darkTheme = ThemeData.dark().copyWith(
+        appBarTheme: AppBarTheme(
+          color: Colors.grey,
+        ),
         accentColor: Colors.blue,
         // splashColor: Colors.blue,
         textSelectionColor: Colors.blue,
@@ -290,6 +294,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       themeMode: ThemeMode.system,
       theme: ThemeData(
+        appBarTheme: AppBarTheme(
+          color: Colors.grey[600],
+        ),
         buttonColor: Colors.blue,
         backgroundColor: Colors.grey,
         accentColor: Colors.blue,
