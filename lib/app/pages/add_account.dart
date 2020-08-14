@@ -20,7 +20,7 @@ class AddAccountManuallyState extends State<AddAccountManually> {
   final _formKey = GlobalKey<FormState>();
   var _accountName = "";
   var _secret = "";
-  var currentOtpType = "time";
+  var currentOtpType = "totp";
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +98,7 @@ class AddAccountManuallyState extends State<AddAccountManually> {
                               value: currentOtpType,
                               icon: Icon(Icons.arrow_downward),
                               items: [
-                                {'value': 'time', 'label': "Time based"},
+                                {'value': 'totp', 'label': "Time based"},
                                 // {'value': 'counter', 'label': "Counter based"},
                               ].map((value) {
                                 return new DropdownMenuItem(
@@ -123,11 +123,10 @@ class AddAccountManuallyState extends State<AddAccountManually> {
                                   logger.d(
                                       _accountName + _secret + currentOtpType);
                                   await OtpAccount.addAccount(OtpAccount(
-                                      0,
-                                      _accountName,
-                                      _secret,
-                                      currentOtpType,
-                                      ""));
+                                    accountName: _accountName,
+                                    secret: _secret,
+                                    otpType: currentOtpType,
+                                  ));
                                   final snackBar = SnackBar(
                                     content: Text('Added'),
                                     duration: Duration(milliseconds: 300),

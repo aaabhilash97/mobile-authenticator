@@ -1,4 +1,4 @@
-package com.example.authenticator
+package com.akmlabs.authenticator
 
 import android.content.BroadcastReceiver
 import android.os.Bundle
@@ -11,6 +11,7 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.EventChannel.EventSink
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugins.GeneratedPluginRegistrant
+import android.view.WindowManager.LayoutParams
 
 class MainActivity: FlutterActivity() {
 
@@ -45,6 +46,7 @@ class MainActivity: FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        getWindow().setFlags(LayoutParams.FLAG_SECURE, LayoutParams.FLAG_SECURE)
 
         val intent = getIntent()
         startString = intent.data?.toString()

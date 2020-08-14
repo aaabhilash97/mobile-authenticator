@@ -1,7 +1,3 @@
-// Copyright 2018 The Flutter team. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:flutter/services.dart';
@@ -9,11 +5,173 @@ import 'package:logger/logger.dart';
 import 'dart:async';
 import 'app/pages/add_account.dart';
 import 'app/services/cache/accounts.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'package:authenticator/initialize_i18n.dart' show initializeI18n;
+import 'package:authenticator/constants.dart' show languages;
+import 'package:authenticator/localizations.dart'
+    show MyLocalizations, MyLocalizationsDelegate;
 import 'init_link.dart';
-import 'package:provider/provider.dart';
+import 'package:otp/otp.dart';
 
 var logger = Logger();
+
+class AccountListTile extends StatefulWidget {
+  final OtpAccount item;
+  final Key key;
+  final Function onDelete;
+
+  AccountListTile(
+    this.item, {
+    this.key,
+    this.onDelete,
+  });
+  @override
+  _AccountListTileState createState() => _AccountListTileState();
+}
+
+class _AccountListTileState extends State<AccountListTile> {
+  bool refreshPage = true;
+  var token = "";
+  var progress = 0.0;
+  Timer timer;
+
+  copToClipBoard(String text, bool isGoBack) {
+    Clipboard.setData(new ClipboardData(text: text));
+
+    final snackBar = SnackBar(
+      content: Text('Token copied to clipboard'),
+      duration: Duration(seconds: 1),
+    );
+    Scaffold.of(context).showSnackBar(snackBar);
+    if (isGoBack) {
+      Navigator.pop(context);
+    }
+  }
+
+  static int timeFormat(DateTime time, int interval) {
+    final _timeStr = time.millisecondsSinceEpoch.toString();
+    final _formatTime = _timeStr.substring(0, _timeStr.length - 3);
+
+    return int.parse(_formatTime) ~/ interval;
+  }
+
+  String generateToken() {
+    var _secret = widget.item.secret;
+    return OTP.generateTOTPCodeString(
+        _secret, new DateTime.now().millisecondsSinceEpoch,
+        length: widget.item.getDigits(),
+        interval: widget.item.getPeriod(),
+        algorithm: widget.item.mapToAlgorithm());
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    token = generateToken();
+
+    var counter = new DateTime.now().second;
+    progress = ((counter > 30 ? (counter - 30) : counter) / 30) * 100;
+
+    timer = Timer.periodic(new Duration(seconds: 1), (timer) {
+      var _newToken = generateToken();
+
+      var counter = new DateTime.now().second;
+      var _progress = ((counter > 30 ? (counter - 30) : counter) / 30) * 100;
+
+      setState(() {
+        token = _newToken.toString();
+        progress = _progress;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    timer.cancel();
+  }
+
+  void deleteItem(OtpAccount item) async {
+    await OtpAccount.deleteAccount(item);
+    widget.onDelete();
+    Navigator.pop(context);
+  }
+
+  void _moreAccountActionBottomSheet(context, OtpAccount item) {
+    showModalBottomSheet(
+        context: context,
+        builder: (BuildContext bc) {
+          return Container(
+            child: new Wrap(
+              children: <Widget>[
+                new ListTile(
+                    leading: new Icon(Icons.content_copy),
+                    title: new Text('Copy'),
+                    onTap: () => {copToClipBoard(item.token, true)}),
+                new ListTile(
+                  leading: new Icon(Icons.delete),
+                  title: new Text('Delete'),
+                  onTap: () => {deleteItem(item)},
+                ),
+              ],
+            ),
+          );
+        });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+        contentPadding: EdgeInsets.symmetric(vertical: 1),
+        key: Key(1.toString()),
+        title: new GestureDetector(
+          child: new Container(
+            child: Text(
+              widget.item.accountName,
+              style: TextStyle(fontWeight: FontWeight.normal),
+            ),
+          ),
+        ),
+        subtitle: new GestureDetector(
+          onTap: () {
+            copToClipBoard(token, false);
+          },
+          child: new Container(
+            child: Text(token,
+                style: TextStyle(
+                    color: Theme.of(context).textSelectionColor,
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ),
+        leading: Container(
+          padding: EdgeInsets.only(left: 10),
+          child: new CircularPercentIndicator(
+            radius: 40.0,
+            lineWidth: 3.0,
+            percent: progress / 100,
+            center: new Text(
+              widget.item.accountName[0].toUpperCase(),
+              style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: Theme.of(context).backgroundColor,
+            progressColor: Theme.of(context).buttonColor,
+          ),
+        ),
+        trailing: Container(
+          child: IconButton(
+            icon: Icon(
+              Icons.more_vert,
+            ),
+            onPressed: () {
+              _moreAccountActionBottomSheet(context, widget.item);
+            },
+          ),
+        ));
+  }
+}
 
 class HomePage extends StatefulWidget {
   @override
@@ -100,8 +258,17 @@ class _HomePageState extends State<HomePage> {
             var accName = parsedUri.path.replaceFirst("/", "");
             var secret = parsedUri.queryParameters["secret"];
             var issuer = parsedUri.queryParameters["issuer"];
-            await _showInitAccountAddDialog(
-                OtpAccount(0, accName, secret, otpType, issuer));
+            var period = parsedUri.queryParameters["period"];
+            var digits = parsedUri.queryParameters["digits"];
+            var algorithm = parsedUri.queryParameters["algorithm"];
+            await _showInitAccountAddDialog(OtpAccount(
+              accountName: accName,
+              secret: secret,
+              issuer: issuer,
+              algorithm: algorithm,
+              digits: OtpAccount.defaultDigits(input: digits),
+              period: OtpAccount.defaultPeriod(input: period),
+            ));
           }
         }
       });
@@ -121,7 +288,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Text(
-                "Authenticator",
+                MyLocalizations.of(context).title,
                 style: TextStyle(
                     fontSize: 25, color: Theme.of(context).appBarTheme.color),
                 textAlign: TextAlign.center,
@@ -169,36 +336,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void deleteItem(OtpAccount item) async {
-    await OtpAccount.deleteAccount(item);
-    setState(() {
-      refreshPage = true;
-    });
-    Navigator.pop(context);
-  }
-
-  void _moreAccountActionBottomSheet(context, OtpAccount item) {
-    showModalBottomSheet(
-        context: context,
-        builder: (BuildContext bc) {
-          return Container(
-            child: new Wrap(
-              children: <Widget>[
-                new ListTile(
-                    leading: new Icon(Icons.content_copy),
-                    title: new Text('Copy'),
-                    onTap: () => {copToClipBoard(item.token, true)}),
-                new ListTile(
-                  leading: new Icon(Icons.delete),
-                  title: new Text('Delete'),
-                  onTap: () => {deleteItem(item)},
-                ),
-              ],
-            ),
-          );
-        });
-  }
-
   void loadItems() async {
     var ok = await OtpAccount.accountList();
     setState(() {
@@ -222,65 +359,49 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.symmetric(vertical: 10.0),
       children: [
         for (final item in items)
-          ListTile(
-            contentPadding: EdgeInsets.symmetric(vertical: 1),
+          AccountListTile(
+            item,
             key: Key(item.index.toString()),
-            title: new GestureDetector(
-              child: new Container(
-                child: Text(
-                  item.accountName,
-                  style: TextStyle(fontWeight: FontWeight.normal),
-                ),
-              ),
-            ),
-            subtitle: new GestureDetector(
-              onTap: () {
-                copToClipBoard(item.secret, false);
-              },
-              child: new Container(
-                child: Text(item.secret,
-                    style: TextStyle(
-                        color: Theme.of(context).textSelectionColor,
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold)),
-              ),
-            ),
-            leading: Container(
-              padding: EdgeInsets.only(left: 10),
-              child: new CircularPercentIndicator(
-                radius: 40.0,
-                lineWidth: 3.0,
-                percent: 0.3,
-                center: new Text(
-                  "A",
-                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-                ),
-                backgroundColor: Theme.of(context).backgroundColor,
-                progressColor: Theme.of(context).buttonColor,
-              ),
-            ),
-            trailing: Container(
-              child: IconButton(
-                icon: Icon(
-                  Icons.more_vert,
-                ),
-                onPressed: () {
-                  _moreAccountActionBottomSheet(context, item);
-                },
-              ),
-            ),
+            onDelete: () => {
+              refresh(),
+            },
           ),
       ],
     );
   }
 }
 
-void main() => runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-class MyApp extends StatelessWidget {
+  Map<String, Map<String, String>> localizedValues = await initializeI18n();
+  runApp(App(localizedValues));
+}
+
+class App extends StatefulWidget {
+  final Map<String, Map<String, String>> localizedValues;
+  App(this.localizedValues);
+
+  @override
+  _AppState createState() => _AppState();
+}
+
+class _AppState extends State<App> {
+  String _locale = 'en';
+  onChangeLanguage() {
+    if (_locale == 'en') {
+      setState(() {
+        _locale = 'ml';
+      });
+    } else {
+      setState(() {
+        _locale = 'en';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    DeepLinkInitLink _bloc = DeepLinkInitLink();
     var darkTheme = ThemeData.dark().copyWith(
         appBarTheme: AppBarTheme(
           color: Colors.grey,
@@ -291,25 +412,26 @@ class MyApp extends StatelessWidget {
         textTheme: Theme.of(context).textTheme.apply(
               bodyColor: Colors.white,
             ));
-    return MaterialApp(
-      themeMode: ThemeMode.system,
-      theme: ThemeData(
-        appBarTheme: AppBarTheme(
-          color: Colors.grey[600],
+    return new MaterialApp(
+        themeMode: ThemeMode.system,
+        theme: ThemeData(
+          appBarTheme: AppBarTheme(
+            color: Colors.grey[600],
+          ),
+          buttonColor: Colors.blue,
+          backgroundColor: Colors.grey,
+          accentColor: Colors.blue,
+          splashColor: Colors.blue,
+          textSelectionColor: Colors.blue,
         ),
-        buttonColor: Colors.blue,
-        backgroundColor: Colors.grey,
-        accentColor: Colors.blue,
-        splashColor: Colors.blue,
-        textSelectionColor: Colors.blue,
-      ),
-      darkTheme: darkTheme,
-      home: Scaffold(
-        body: Provider<DeepLinkInitLink>(
-            create: (context) => _bloc,
-            dispose: (context, bloc) => bloc.dispose(),
-            child: HomePage()),
-      ),
-    );
+        darkTheme: darkTheme,
+        locale: Locale(_locale),
+        localizationsDelegates: [
+          MyLocalizationsDelegate(widget.localizedValues),
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        supportedLocales: languages.map((language) => Locale(language, '')),
+        home: HomePage());
   }
 }
