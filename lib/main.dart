@@ -1,38 +1,323 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'dart:async';
-import 'app/pages/add_account.dart';
 import 'app/services/cache/accounts.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'package:authenticator/app/pages/add_account.dart';
 import 'package:authenticator/initialize_i18n.dart' show initializeI18n;
 import 'package:authenticator/constants.dart' show languages;
 import 'package:authenticator/localizations.dart'
     show MyLocalizations, MyLocalizationsDelegate;
 import 'init_link.dart';
 import 'package:otp/otp.dart';
+import 'package:firebase_ml_vision/firebase_ml_vision.dart';
+import 'package:flutter_camera_ml_vision/flutter_camera_ml_vision.dart';
+
+// import 'package:qr_mobile_vision/qr_camera.dart';
 
 var logger = Logger();
+
+class ScanPage extends StatefulWidget {
+  @override
+  _ScanPageState createState() => _ScanPageState();
+}
+
+class _ScanPageState extends State<ScanPage> {
+  bool resultSent = false;
+  BarcodeDetector detector = FirebaseVision.instance.barcodeDetector();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.width,
+          width: MediaQuery.of(context).size.width,
+          child: CameraMlVision<List<Barcode>>(
+            overlayBuilder: (c) {
+              return Container(
+                decoration: ShapeDecoration(
+                  shape: _ScannerOverlayShape(
+                    borderColor: Theme.of(context).primaryColor,
+                    borderWidth: 3.0,
+                  ),
+                ),
+              );
+            },
+            detector: detector.detectInImage,
+            onResult: (List<Barcode> barcodes) {
+              if (!mounted ||
+                  resultSent ||
+                  barcodes == null ||
+                  barcodes.isEmpty) {
+                return;
+              }
+              if (barcodes.first.rawValue.startsWith("otpauth")) {
+                resultSent = true;
+                logger.w(barcodes.first.rawValue);
+                Navigator.pop(context, barcodes.first.rawValue);
+              }
+            },
+            onDispose: () {
+              detector.close();
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannerOverlayShape extends ShapeBorder {
+  final Color borderColor;
+  final double borderWidth;
+  final Color overlayColor;
+
+  _ScannerOverlayShape({
+    this.borderColor = Colors.white,
+    this.borderWidth = 1.0,
+    this.overlayColor = const Color(0x88000000),
+  });
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(10.0);
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection textDirection}) {
+    return Path()
+      ..fillType = PathFillType.evenOdd
+      ..addPath(getOuterPath(rect), Offset.zero);
+  }
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection textDirection}) {
+    Path _getLeftTopPath(Rect rect) {
+      return Path()
+        ..moveTo(rect.left, rect.bottom)
+        ..lineTo(rect.left, rect.top)
+        ..lineTo(rect.right, rect.top);
+    }
+
+    return _getLeftTopPath(rect)
+      ..lineTo(
+        rect.right,
+        rect.bottom,
+      )
+      ..lineTo(
+        rect.left,
+        rect.bottom,
+      )
+      ..lineTo(
+        rect.left,
+        rect.top,
+      );
+  }
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection textDirection}) {
+    const lineSize = 30;
+
+    final width = rect.width;
+    final borderWidthSize = width * 10 / 100;
+    final height = rect.height;
+    final borderHeightSize = height - (width - borderWidthSize);
+    final borderSize = Size(borderWidthSize / 2, borderHeightSize / 2);
+
+    var paint = Paint()
+      ..color = overlayColor
+      ..style = PaintingStyle.fill;
+
+    canvas
+      ..drawRect(
+        Rect.fromLTRB(
+            rect.left, rect.top, rect.right, borderSize.height + rect.top),
+        paint,
+      )
+      ..drawRect(
+        Rect.fromLTRB(rect.left, rect.bottom - borderSize.height, rect.right,
+            rect.bottom),
+        paint,
+      )
+      ..drawRect(
+        Rect.fromLTRB(rect.left, rect.top + borderSize.height,
+            rect.left + borderSize.width, rect.bottom - borderSize.height),
+        paint,
+      )
+      ..drawRect(
+        Rect.fromLTRB(
+            rect.right - borderSize.width,
+            rect.top + borderSize.height,
+            rect.right,
+            rect.bottom - borderSize.height),
+        paint,
+      );
+
+    paint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth;
+
+    final borderOffset = borderWidth / 2;
+    final realReact = Rect.fromLTRB(
+        borderSize.width + borderOffset,
+        borderSize.height + borderOffset + rect.top,
+        width - borderSize.width - borderOffset,
+        height - borderSize.height - borderOffset + rect.top);
+
+    //Draw top right corner
+    canvas
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.right, realReact.top)
+            ..lineTo(realReact.right, realReact.top + lineSize),
+          paint)
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.right, realReact.top)
+            ..lineTo(realReact.right - lineSize, realReact.top),
+          paint)
+      ..drawPoints(
+        PointMode.points,
+        [Offset(realReact.right, realReact.top)],
+        paint,
+      )
+
+      //Draw top left corner
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.left, realReact.top)
+            ..lineTo(realReact.left, realReact.top + lineSize),
+          paint)
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.left, realReact.top)
+            ..lineTo(realReact.left + lineSize, realReact.top),
+          paint)
+      ..drawPoints(
+        PointMode.points,
+        [Offset(realReact.left, realReact.top)],
+        paint,
+      )
+
+      //Draw bottom right corner
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.right, realReact.bottom)
+            ..lineTo(realReact.right, realReact.bottom - lineSize),
+          paint)
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.right, realReact.bottom)
+            ..lineTo(realReact.right - lineSize, realReact.bottom),
+          paint)
+      ..drawPoints(
+        PointMode.points,
+        [Offset(realReact.right, realReact.bottom)],
+        paint,
+      )
+
+      //Draw bottom left corner
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.left, realReact.bottom)
+            ..lineTo(realReact.left, realReact.bottom - lineSize),
+          paint)
+      ..drawPath(
+          Path()
+            ..moveTo(realReact.left, realReact.bottom)
+            ..lineTo(realReact.left + lineSize, realReact.bottom),
+          paint)
+      ..drawPoints(
+        PointMode.points,
+        [Offset(realReact.left, realReact.bottom)],
+        paint,
+      );
+  }
+
+  @override
+  ShapeBorder scale(double t) {
+    return _ScannerOverlayShape(
+      borderColor: borderColor,
+      borderWidth: borderWidth,
+      overlayColor: overlayColor,
+    );
+  }
+}
 
 class AccountListTile extends StatefulWidget {
   final OtpAccount item;
   final Key key;
   final Function onDelete;
+  final Function onNewAccount;
 
   AccountListTile(
     this.item, {
     this.key,
     this.onDelete,
+    this.onNewAccount,
   });
   @override
   _AccountListTileState createState() => _AccountListTileState();
 }
 
+class OtpToken {
+  Widget view;
+  double progress;
+  bool isSuccess;
+
+  OtpToken({this.view, this.progress, this.isSuccess = false});
+
+  static OtpToken generateToken({
+    OtpAccount item,
+    Function(String, bool) onTap,
+    Color textColor,
+    Color errorColor,
+  }) {
+    var _secret = item.secret;
+    var counter = new DateTime.now().second;
+    var _progress = ((counter > 30 ? (counter - 30) : counter) / 30) * 100;
+    try {
+      var token = OTP.generateTOTPCodeString(
+          _secret, new DateTime.now().millisecondsSinceEpoch,
+          length: item.getDigits(),
+          interval: item.getPeriod(),
+          algorithm: item.mapToAlgorithm());
+      return OtpToken(
+        isSuccess: true,
+        progress: _progress,
+        view: new GestureDetector(
+          onTap: () => {
+            onTap(token, false),
+          },
+          child: new Container(
+            child: Text(token,
+                style: TextStyle(
+                    color: textColor,
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ),
+      );
+    } catch (e) {
+      return OtpToken(
+        progress: 0,
+        view: Text("Invalid Otp secret",
+            style: TextStyle(
+                color: errorColor,
+                fontSize: 10,
+                fontWeight: FontWeight.normal)),
+      );
+    }
+  }
+}
+
 class _AccountListTileState extends State<AccountListTile> {
   bool refreshPage = true;
-  var token = "";
+  Widget token;
   var progress = 0.0;
   Timer timer;
 
@@ -49,41 +334,34 @@ class _AccountListTileState extends State<AccountListTile> {
     }
   }
 
-  static int timeFormat(DateTime time, int interval) {
-    final _timeStr = time.millisecondsSinceEpoch.toString();
-    final _formatTime = _timeStr.substring(0, _timeStr.length - 3);
-
-    return int.parse(_formatTime) ~/ interval;
-  }
-
-  String generateToken() {
-    var _secret = widget.item.secret;
-    return OTP.generateTOTPCodeString(
-        _secret, new DateTime.now().millisecondsSinceEpoch,
-        length: widget.item.getDigits(),
-        interval: widget.item.getPeriod(),
-        algorithm: widget.item.mapToAlgorithm());
-  }
-
   @override
   void initState() {
     super.initState();
 
-    token = generateToken();
-
-    var counter = new DateTime.now().second;
-    progress = ((counter > 30 ? (counter - 30) : counter) / 30) * 100;
-
-    timer = Timer.periodic(new Duration(seconds: 1), (timer) {
-      var _newToken = generateToken();
-
-      var counter = new DateTime.now().second;
-      var _progress = ((counter > 30 ? (counter - 30) : counter) / 30) * 100;
-
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      var otpToken = OtpToken.generateToken(
+          item: widget.item,
+          onTap: copToClipBoard,
+          textColor: Theme.of(context).textSelectionColor,
+          errorColor: Theme.of(context).errorColor);
       setState(() {
-        token = _newToken.toString();
-        progress = _progress;
+        token = otpToken.view;
+        progress = otpToken.progress;
       });
+      if (otpToken.isSuccess) {
+        timer = Timer.periodic(new Duration(seconds: 1), (timer) {
+          otpToken = OtpToken.generateToken(
+              item: widget.item,
+              onTap: copToClipBoard,
+              textColor: Theme.of(context).textSelectionColor,
+              errorColor: Theme.of(context).errorColor);
+
+          setState(() {
+            token = otpToken.view;
+            progress = otpToken.progress;
+          });
+        });
+      }
     });
   }
 
@@ -134,18 +412,7 @@ class _AccountListTileState extends State<AccountListTile> {
             ),
           ),
         ),
-        subtitle: new GestureDetector(
-          onTap: () {
-            copToClipBoard(token, false);
-          },
-          child: new Container(
-            child: Text(token,
-                style: TextStyle(
-                    color: Theme.of(context).textSelectionColor,
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold)),
-          ),
-        ),
+        subtitle: token,
         leading: Container(
           padding: EdgeInsets.only(left: 10),
           child: new CircularPercentIndicator(
@@ -170,6 +437,67 @@ class _AccountListTileState extends State<AccountListTile> {
             },
           ),
         ));
+  }
+}
+
+class QrCodeScanner extends StatefulWidget {
+  @override
+  _QrCodeScannerState createState() => new _QrCodeScannerState();
+}
+
+class _QrCodeScannerState extends State<QrCodeScanner> {
+  var camState = true;
+  String qrCode = "";
+  @override
+  Widget build(BuildContext context) {
+    if (!camState) {
+      Navigator.pop(context, qrCode);
+    }
+    return camState
+        ? new Scaffold(
+            appBar: new AppBar(
+              title: new Text('Scan Qrcode'),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+            ),
+            body: new Center(
+              child: new Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  new Expanded(
+                      child: new Center(
+                    child: new SizedBox(
+                      width: 300.0,
+                      height: 300.0,
+                      // child: new QrCamera(
+                      //   onError: (context, error) => Text(
+                      //     error.toString(),
+                      //     style: TextStyle(color: Colors.red),
+                      //   ),
+                      //   qrCodeCallback: (code) {
+                      //     setState(() {
+                      //       camState = false;
+                      //       qrCode = code;
+                      //     });
+                      //   },
+                      //   child: new Container(
+                      //     decoration: new BoxDecoration(
+                      //       color: Colors.transparent,
+                      //       border: Border.all(
+                      //           color: Colors.orange,
+                      //           width: 1.0,
+                      //           style: BorderStyle.solid),
+                      //     ),
+                      //   ),
+                      // ),
+                    ),
+                  )),
+                ],
+              ),
+            ),
+          )
+        : new Center(child: new Text("Camera inactive"));
   }
 }
 
@@ -222,6 +550,52 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> openQrcodeScan() async {
+    var qrCode = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => Scaffold(body: ScanPage())),
+    );
+    logger.w(qrCode);
+    await parseAndAddAccount(qrCode);
+    Navigator.of(context).pop();
+  }
+
+  Future<void> openAddAccountManually() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (context) => Scaffold(body: AddAccountManually())),
+    );
+    refresh();
+    Navigator.of(context).pop();
+  }
+
+  void _addAccountButtonActionBottomSheet(context) {
+    showModalBottomSheet(
+        context: context,
+        builder: (BuildContext bc) {
+          return Container(
+            child: new Wrap(
+              children: <Widget>[
+                new ListTile(
+                    leading: new Icon(Icons.keyboard),
+                    title: new Text('Add acount manually'),
+                    onTap: () => {
+                          openAddAccountManually(),
+                        }),
+                new ListTile(
+                  leading: new Icon(Icons.camera),
+                  title: new Text('Scan Qrcode'),
+                  onTap: () => {
+                    openQrcodeScan(),
+                  },
+                ),
+              ],
+            ),
+          );
+        });
+  }
+
   Future<void> _showInitAccountAddDialog(OtpAccount item) async {
     return showDialog<void>(
       context: context,
@@ -250,29 +624,33 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       DeepLinkInitLink _bloc = DeepLinkInitLink();
-      _bloc.state.listen((event) async {
-        var parsedUri = Uri.parse(event);
-        if (parsedUri.scheme == "otpauth") {
-          var otpType = parsedUri.host;
-          if (otpType == "totp") {
-            var accName = parsedUri.path.replaceFirst("/", "");
-            var secret = parsedUri.queryParameters["secret"];
-            var issuer = parsedUri.queryParameters["issuer"];
-            var period = parsedUri.queryParameters["period"];
-            var digits = parsedUri.queryParameters["digits"];
-            var algorithm = parsedUri.queryParameters["algorithm"];
-            await _showInitAccountAddDialog(OtpAccount(
-              accountName: accName,
-              secret: secret,
-              issuer: issuer,
-              algorithm: algorithm,
-              digits: OtpAccount.defaultDigits(input: digits),
-              period: OtpAccount.defaultPeriod(input: period),
-            ));
-          }
-        }
+      _bloc.state.listen((qrCode) async {
+        await parseAndAddAccount(qrCode);
       });
     });
+  }
+
+  Future<void> parseAndAddAccount(String qrCode) async {
+    var parsedUri = Uri.parse(qrCode);
+    if (parsedUri.scheme == "otpauth") {
+      var otpType = parsedUri.host;
+      if (otpType == "totp") {
+        var accName = parsedUri.path.replaceFirst("/", "");
+        var secret = parsedUri.queryParameters["secret"];
+        var issuer = parsedUri.queryParameters["issuer"];
+        var period = parsedUri.queryParameters["period"];
+        var digits = parsedUri.queryParameters["digits"];
+        var algorithm = parsedUri.queryParameters["algorithm"];
+        await _showInitAccountAddDialog(OtpAccount(
+          accountName: accName,
+          secret: secret,
+          issuer: issuer,
+          algorithm: algorithm,
+          digits: OtpAccount.defaultDigits(input: digits),
+          period: OtpAccount.defaultPeriod(input: period),
+        ));
+      }
+    }
   }
 
   @override
@@ -299,24 +677,7 @@ class _HomePageState extends State<HomePage> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: Theme.of(context).buttonColor,
         onPressed: () async {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => Scaffold(body: AddAccountManually())),
-          ).then((value) => {refresh()});
-          // var result = await BarcodeScanner.scan(options: ScanOptions());
-          // var parsedUri = Uri.parse(result.rawContent);
-          // if (parsedUri.scheme == "otpauth") {
-          //   var otpType = parsedUri.host;
-          //   if (otpType == "totp") {
-          //     print(">>>>>>>>>>>");
-          //     print(otpType);
-          //     print(parsedUri.path.replaceFirst("/", ""));
-          //     print(parsedUri.queryParameters["secret"]);
-          //     print(parsedUri.queryParameters["issuer"]);
-          //     print(">>>>>>>>>>>");
-          //   }
-          // }
+          _addAccountButtonActionBottomSheet(context);
         },
         child: Icon(Icons.add),
       ),
@@ -365,6 +726,9 @@ class _HomePageState extends State<HomePage> {
             onDelete: () => {
               refresh(),
             },
+            onNewAccount: (OtpAccount item) => {
+              refresh(),
+            },
           ),
       ],
     );
@@ -373,7 +737,6 @@ class _HomePageState extends State<HomePage> {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   Map<String, Map<String, String>> localizedValues = await initializeI18n();
   runApp(App(localizedValues));
 }
