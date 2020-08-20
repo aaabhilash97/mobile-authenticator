@@ -93,8 +93,8 @@ class MainActivity : FlutterActivity() {
         if (surfaceView !is SurfaceView) {
             return false
         }
-        // surfaceView.setSecure(true)
-        // this.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        surfaceView.setSecure(true)
+        this.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         return true
     }
     private fun isNonEmptyContainer(view: View): Boolean {
