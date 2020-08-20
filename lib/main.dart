@@ -18,22 +18,6 @@ import 'package:otp/otp.dart';
 
 var logger = Logger();
 
-class AccountListTile extends StatefulWidget {
-  final OtpAccount item;
-  final Key key;
-  final Function onDelete;
-  final Function onNewAccount;
-
-  AccountListTile(
-    this.item, {
-    this.key,
-    this.onDelete,
-    this.onNewAccount,
-  });
-  @override
-  _AccountListTileState createState() => _AccountListTileState();
-}
-
 class OtpToken {
   Widget view;
   double progress;
@@ -83,6 +67,22 @@ class OtpToken {
       );
     }
   }
+}
+
+class AccountListTile extends StatefulWidget {
+  final OtpAccount item;
+  final Key key;
+  final Function onDelete;
+  final Function onNewAccount;
+
+  AccountListTile(
+    this.item, {
+    this.key,
+    this.onDelete,
+    this.onNewAccount,
+  });
+  @override
+  _AccountListTileState createState() => _AccountListTileState();
 }
 
 class _AccountListTileState extends State<AccountListTile> {
@@ -169,6 +169,19 @@ class _AccountListTileState extends State<AccountListTile> {
         });
   }
 
+  Widget suggestIcon(OtpAccount item) {
+    var issuer = item.issuer;
+    issuer = issuer != null ? issuer.toLowerCase() : "";
+    if (["facebook", "google", "linkedin", "github", "slack"]
+        .contains(issuer)) {
+      return new Image.asset('assets/images/organization_icons/$issuer.png');
+    }
+    return new Text(
+      widget.item.accountName[0].toUpperCase(),
+      style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -189,10 +202,7 @@ class _AccountListTileState extends State<AccountListTile> {
             radius: 40.0,
             lineWidth: 3.0,
             percent: progress / 100,
-            center: new Text(
-              widget.item.accountName[0].toUpperCase(),
-              style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-            ),
+            center: suggestIcon(widget.item),
             backgroundColor: Theme.of(context).backgroundColor,
             progressColor: Theme.of(context).buttonColor,
           ),
@@ -326,7 +336,11 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(builder: (context) => Scaffold(body: ScanPage())),
     );
     logger.w(qrCode);
-    await parseAndAddAccount(qrCode);
+    try {
+      await parseAndAddAccount(qrCode);
+    } catch (err) {
+      logger.e(err);
+    }
     Navigator.of(context).pop();
   }
 
