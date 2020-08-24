@@ -16,6 +16,19 @@ class _ScanPageState extends State<ScanPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        iconTheme: IconThemeData(
+          color: Theme.of(context).appBarTheme.color,
+        ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        title: Text(
+          "Scan Qrcode",
+          style: TextStyle(
+            color: Theme.of(context).appBarTheme.color,
+          ),
+        ),
+      ),
       body: Center(
         child: SizedBox(
           height: MediaQuery.of(context).size.width,

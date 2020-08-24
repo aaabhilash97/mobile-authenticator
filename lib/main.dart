@@ -7,6 +7,7 @@ import 'dart:async';
 import 'app/services/cache/accounts.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'package:authenticator/app/pages/sign_in.dart';
 import 'package:authenticator/app/pages/add_account.dart';
 import 'package:authenticator/app/pages/scan_qr_code.dart';
 import 'package:authenticator/initialize_i18n.dart' show initializeI18n;
@@ -15,8 +16,15 @@ import 'package:authenticator/localizations.dart'
     show MyLocalizations, MyLocalizationsDelegate;
 import 'init_link.dart';
 import 'package:otp/otp.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:mutex/mutex.dart';
+
+FirebaseAuth auth = FirebaseAuth.instance;
 
 var logger = Logger();
+var m = Mutex();
 
 class OtpToken {
   Widget view;
@@ -291,6 +299,30 @@ class _HomePageState extends State<HomePage> {
 
   List<OtpAccount> items = [];
 
+  // Define an async function to initialize FlutterFire
+  void initializeFlutterFire() async {
+    try {
+      // Wait for Firebase to initialize and set `_initialized` state to true
+      await Firebase.initializeApp();
+      FirebaseAuth.instance.authStateChanges().listen((User user) async {
+        if (user == null) {
+          await m.acquire();
+          print('User is currently signed out!');
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => Scaffold(body: SignIn())),
+          );
+          m.release();
+        } else {
+          print('User is signed in!');
+        }
+      });
+    } catch (e) {
+      // Set `_error` state to true if Firebase initialization fails
+      logger.e(e);
+    } finally {}
+  }
+
   List<int> minAndMax(val1, val2) {
     if (val1 > val2) {
       return [val2, val1];
@@ -331,15 +363,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> openQrcodeScan() async {
-    var qrCode = await Navigator.push(
+    String qrCode = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => Scaffold(body: ScanPage())),
     );
-    logger.w(qrCode);
-    try {
-      await parseAndAddAccount(qrCode);
-    } catch (err) {
-      logger.e(err);
+    if (qrCode != null && qrCode.isNotEmpty) {
+      try {
+        await parseAndAddAccount(qrCode);
+      } catch (err) {
+        logger.e(err);
+      }
     }
     Navigator.of(context).pop();
   }
@@ -405,6 +438,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
+    initializeFlutterFire();
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       DeepLinkInitLink _bloc = DeepLinkInitLink();
@@ -445,6 +479,30 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
           elevation: 0,
           backgroundColor: Colors.transparent,
+          actions: [
+            Container(
+                child: Row(
+              // mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                PopupMenuButton<String>(
+                  onSelected: (String value) {
+                    switch (value) {
+                      case 'Settings':
+                        break;
+                    }
+                  },
+                  itemBuilder: (BuildContext context) {
+                    return {'Settings'}.map((String choice) {
+                      return PopupMenuItem<String>(
+                        value: choice,
+                        child: Text(choice),
+                      );
+                    }).toList();
+                  },
+                ),
+              ],
+            )),
+          ],
           title: Container(
               child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
